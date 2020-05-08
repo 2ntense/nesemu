@@ -30,6 +30,20 @@ void stack_push(uint8_t val)
     }
 }
 
+uint8_t stack_pop()
+{
+    cpu.sp++;
+    uint16_t pop_addr = 0x100 | cpu.sp;
+    if (pop_addr >= 0x0100 && pop_addr <= 0x1ff)
+    {
+        return cpu.mem[pop_addr];
+    }
+    else
+    {
+        // TODO: stack pointer out of range
+    }
+}
+
 uint8_t read_byte()
 {
     return cpu.mem[cpu.pc++];
