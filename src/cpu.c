@@ -8,7 +8,7 @@ void init_cpu()
 {
     memset(&cpu, 0, sizeof(cpu));
 
-    cpu.sp = 0x0200;
+    cpu.sp = 0xff;
 }
 
 // void pc_inc(uint8_t count)
@@ -18,10 +18,11 @@ void init_cpu()
 
 void stack_push(uint8_t val)
 {
-    cpu.sp--;
-    if (cpu.sp >= 0x0100 && cpu.sp <= 0x1ff)
+    uint16_t push_addr = 0x0100 | cpu.sp;
+    if (push_addr >= 0x0100 && push_addr <= 0x1ff)
     {
-        cpu.mem[cpu.sp] = val;
+        cpu.mem[push_addr] = val;
+        cpu.sp--;
     }
     else
     {
