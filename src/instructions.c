@@ -313,27 +313,43 @@ void ora(addr_mode *mode)
     uint16_t ops;
 
     uint16_t tmp;
+    uint8_t carry;
+
+    uint16_t eff_addr;
 
     switch (*mode)
     {
     case IND_X:
-op0 = read_byte();
+        op0 = read_byte();
         target_addr = cpu.mem[(cpu.x + op0) % 0xff];
         ll = cpu.mem[target_addr];
         hh = cpu.mem[target_addr + 1];
         cpu.a |= (hh << 8) | ll;
         break;
     case ZPG:
-op0 = read_byte();
+        op0 = read_byte();
         cpu.a |= (cpu.mem[op0 & 0xff]);
         break;
     case IMM:
-op0 = read_byte();
+        op0 = read_byte();
         cpu.a |= op0;
         break;
     case ABS:
         ops = read_short();
-        tmp = cpu.mem[ops];
+        cpu.a |= cpu.mem[ops];
+        break;
+    case IND_Y:
+        carry = 0;
+        tmp = read_byte() + cpu.y;
+        if (tmp > 0xff)
+        {
+            tmp %= 0xff;
+            carry = 1;
+        }
+        ll = cpu.mem[tmp];
+        hh = cpu.mem[tmp + 1 + carry];
+        eff_addr = (hh << 8) | ll;
+        cpu.a |= cpu.mem[eff_addr];
         break;
     default:
         break;
@@ -342,9 +358,11 @@ op0 = read_byte();
     SET_FLAG_Z(!cpu.a);
     SET_FLAG_N(cpu.a >> 7 & 1);
 }
+
 void asl(addr_mode *mode)
 {
     uint8_t op0;
+    uint16_t ops;
     uint8_t *val;
 
     switch (*mode)
@@ -362,11 +380,17 @@ void asl(addr_mode *mode)
 
         val = &cpu.a;
         break;
+    case ABS:
+        ops = read_short();
+        val = &cpu.mem[ops];
+        break;
     default:
         break;
     }
 
     SET_FLAG_C(*val >> 7 & 1);
+    SET_FLAG_Z(!cpu.a);
+    SET_FLAG_N(cpu.a >> 7 & 1);
     *val <<= 1;
 }
 
@@ -377,6 +401,11 @@ void php()
 
 void bpl()
 {
+    // should only process relative addressing mode
+   if (cpu.p.flags.n == 0)
+   {
+       cpu.pc += (int8_t)read_byte();
+   } 
 }
 void clc() {}
 void and (addr_mode * mode) {}
