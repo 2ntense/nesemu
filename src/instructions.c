@@ -18,6 +18,7 @@
 #define SET_FLAG_N(X) cpu.p.flags.n = (X)
 
 #define WORD(LL, HH) (uint16_t)(((HH) << 8) | (LL))
+#define MEM(A) cpu.mem[(A)]
 
 // #define SET_FLAG_C cpu.p.flags.c = 1
 // #define SET_FLAG_Z cpu.p.flags.z = 1
@@ -976,19 +977,206 @@ void bcs(addr_mode *mode)
         break;
     }
 }
-void clv() {}
-void tsx() {}
-void cpy(addr_mode *mode) {}
-void cmp(addr_mode *mode) {}
-void dec(addr_mode *mode) {}
-void iny() {}
-void dex() {}
-void bne(addr_mode *mode) {}
-void cld() {}
-void cpx(addr_mode *mode) {}
-void sbc(addr_mode *mode) {}
-void inc(addr_mode *mode) {}
-void inx() {}
-void nop() {}
-void beq(addr_mode *mode) {}
-void sed() {}
+
+void clv()
+{
+    SET_FLAG_V(0);
+}
+
+void tsx()
+{
+    cpu.x = cpu.sp;
+    SET_FLAG_Z(cpu.x == 0);
+    SET_FLAG_N((cpu.x >> 7) & 1);
+}
+
+void cpy(addr_mode *mode)
+{
+    uint8_t val;
+
+    switch (*mode)
+    {
+    case ZPG:
+    case ABS:
+        val = MEM(get_eff_addr(mode));
+        break;
+    case IMM:
+        val = read_byte();
+    default:
+        break;
+    }
+
+    uint8_t diff = cpu.y - val;
+    SET_FLAG_C(cpu.y >= val);
+    SET_FLAG_Z(cpu.y == val);
+    SET_FLAG_N((diff >> 7) & 1);
+}
+
+void cmp(addr_mode *mode)
+{
+    uint8_t val;
+
+    switch (*mode)
+    {
+    case ZPG:
+    case ZPG_X:
+    case ABS:
+    case ABS_X:
+    case ABS_Y:
+    case IND_X:
+    case IND_Y:
+        val = MEM(get_eff_addr(mode));
+        break;
+    case IMM:
+        val = read_byte();
+    default:
+        break;
+    }
+
+    uint8_t diff = cpu.a - val;
+    SET_FLAG_C(cpu.a >= val);
+    SET_FLAG_Z(cpu.a == val);
+    SET_FLAG_N((diff >> 7) & 1);
+}
+
+void dec(addr_mode *mode)
+{
+    uint8_t *val;
+
+    switch (*mode)
+    {
+    case ZPG:
+    case ZPG_X:
+    case ABS:
+    case ABS_X:
+        val = &MEM(get_eff_addr(mode));
+        break;
+    default:
+        break;
+    }
+
+    *val--;
+    SET_FLAG_Z(*val == 0);
+    SET_FLAG_N((*val >> 7) & 1);
+}
+
+void iny()
+{
+    cpu.y++;
+    SET_FLAG_Z(cpu.y == 0);
+    SET_FLAG_N((cpu.y >> 7) & 1);
+}
+
+void dex()
+{
+    cpu.x--;
+    SET_FLAG_Z(cpu.x == 0);
+    SET_FLAG_N((cpu.x >> 7) & 1);
+}
+
+void bne(addr_mode *mode)
+{
+    switch (*mode)
+    {
+    case REL:
+        if (!FLAG_Z)
+        {
+            cpu.pc += (int8_t)read_byte();
+        }
+        else
+        {
+            cpu.pc++;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+void cld()
+{
+    SET_FLAG_D(0);
+}
+
+void cpx(addr_mode *mode)
+{
+    uint8_t val;
+
+    switch (*mode)
+    {
+    case ZPG:
+    case ABS:
+        val = MEM(get_eff_addr(mode));
+        break;
+    case IMM:
+        val = read_byte();
+    default:
+        break;
+    }
+
+    uint8_t diff = cpu.x - val;
+    SET_FLAG_C(cpu.x >= val);
+    SET_FLAG_Z(cpu.x == val);
+    SET_FLAG_N((diff >> 7) & 1);
+}
+
+void sbc(addr_mode *mode)
+{
+}
+
+void inc(addr_mode *mode)
+{
+    uint8_t *val;
+
+    switch (*mode)
+    {
+    case ZPG:
+    case ZPG_X:
+    case ABS:
+    case ABS_X:
+        val = &MEM(get_eff_addr(mode));
+        break;
+    default:
+        break;
+    }
+
+    *val++;
+    SET_FLAG_Z(*val == 0);
+    SET_FLAG_N((*val >> 7) & 1);
+}
+
+void inx()
+{
+    cpu.x++;
+    SET_FLAG_Z(cpu.x == 0);
+    SET_FLAG_N((cpu.x >> 7) & 1);
+}
+
+void nop()
+{
+    cpu.pc++;
+}
+
+void beq(addr_mode *mode)
+{
+    switch (*mode)
+    {
+    case REL:
+        if (FLAG_Z)
+        {
+            cpu.pc += (int8_t)read_byte();
+        }
+        else
+        {
+            cpu.pc++;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+void sed()
+{
+    SET_FLAG_D(1);
+}
