@@ -2,39 +2,6 @@
 #include "cpu.h"
 #include <stdio.h>
 
-#define FLAG_C cpu.p.flags.c
-#define FLAG_Z cpu.p.flags.z
-#define FLAG_I cpu.p.flags.i
-#define FLAG_D cpu.p.flags.d
-#define FLAG_B cpu.p.flags.b
-#define FLAG_V cpu.p.flags.v
-#define FLAG_N cpu.p.flags.n
-#define SET_FLAG_C(X) cpu.p.flags.c = (X)
-#define SET_FLAG_Z(X) cpu.p.flags.z = (X)
-#define SET_FLAG_I(X) cpu.p.flags.i = (X)
-#define SET_FLAG_D(X) cpu.p.flags.d = (X)
-#define SET_FLAG_B(X) cpu.p.flags.b = (X)
-#define SET_FLAG_V(X) cpu.p.flags.v = (X)
-#define SET_FLAG_N(X) cpu.p.flags.n = (X)
-
-#define WORD(LL, HH) (uint16_t)(((HH) << 8) | (LL))
-#define MEM(A) cpu.mem[(A)]
-
-// #define SET_FLAG_C cpu.p.flags.c = 1
-// #define SET_FLAG_Z cpu.p.flags.z = 1
-// #define SET_FLAG_I cpu.p.flags.i = 1
-// #define SET_FLAG_D cpu.p.flags.d = 1
-// #define SET_FLAG_B cpu.p.flags.b = 1
-// #define SET_FLAG_V cpu.p.flags.v = 1
-// #define SET_FLAG_N cpu.p.flags.n = 1
-// #define CLEAR_FLAG_C cpu.p.flags.c = 0
-// #define CLEAR_FLAG_Z cpu.p.flags.z = 0
-// #define CLEAR_FLAG_I cpu.p.flags.i = 0
-// #define CLEAR_FLAG_D cpu.p.flags.d = 0
-// #define CLEAR_FLAG_B cpu.p.flags.b = 0
-// #define CLEAR_FLAG_V cpu.p.flags.v = 0
-// #define CLEAR_FLAG_N cpu.p.flags.n = 0
-
 instruction_t instructions[0x100] = {
     {"BRK", IMP, brk},   // 0x00
     {"ORA", IND_X, ora}, // 0x01
@@ -308,64 +275,54 @@ void invoke(instruction_t *instruction)
 
 uint16_t get_eff_addr(addr_mode *mode)
 {
-    uint8_t op0;
-    uint8_t op1;
-    uint16_t oper;
     uint16_t eff_addr;
     uint8_t zpg_addr;
-    uint16_t addr;
-    uint8_t ll;
-    uint8_t hh;
-    uint8_t carry;
+    uint8_t adl;
+    uint8_t adh;
 
     switch (*mode)
     {
+    case IND:
+        eff_addr = MEM(read_short());
+        break;
     case IND_X:
-        op0 = read_byte();
-        zpg_addr = (op0 + cpu.x) % 0xff;
-        ll = cpu.mem[zpg_addr];
-        hh = cpu.mem[(zpg_addr + 1) % 0xff];
-        eff_addr = WORD(ll, hh);
+        zpg_addr = read_byte();
+        adl = MEM((zpg_addr + REG_X) % 0xff);
+        adh = MEM((zpg_addr + REG_X + 1) % 0xff);
+        eff_addr = WORD(adl, adh);
+        break;
+    case IND_Y:
+        zpg_addr = read_byte();
+        adl = MEM(zpg_addr);
+        adh = MEM(zpg_addr + 1);
+        eff_addr = WORD(adl, adh) + REG_Y;
         break;
     case ZPG:
         eff_addr = read_byte();
         break;
-    case IMM:
-        //TODO NO ADDRESS
+    case ZPG_X:
+        eff_addr = read_byte() + REG_X;
+        break;
+    case ZPG_Y:
+        eff_addr = read_byte() + REG_Y;
         break;
     case ABS:
         eff_addr = read_short();
         break;
-    case IND_Y:
-        op0 = read_byte();
-        zpg_addr = op0 + cpu.y;
-        carry = (op0 + cpu.y > 0xff);
-        ll = cpu.mem[zpg_addr];
-        hh = cpu.mem[zpg_addr + 1] + carry;
-        eff_addr = WORD(ll, hh);
-        break;
-    case ZPG_X:
-        zpg_addr = read_byte();
-        eff_addr = zpg_addr + cpu.x;
-        break;
-    case ZPG_Y:
-        zpg_addr = read_byte();
-        eff_addr = zpg_addr + cpu.y;
-    case ABS_Y:
-        op0 = read_byte();
-        op1 = read_byte();
-        eff_addr = WORD(op0, op1) + cpu.y;
-        break;
     case ABS_X:
-        op0 = read_byte();
-        op1 = read_byte();
-        eff_addr = WORD(op0, op1) + cpu.x;
+        eff_addr = read_short() + REG_X;
         break;
-    case IND:
-        op0 = read_byte();
-        op1 = read_byte();
-        eff_addr = WORD(op0, op1);
+    case ABS_Y:
+        eff_addr = read_short() + REG_Y;
         break;
+    case REL:
+        eff_addr = (int8_t)read_byte();
+        break;
+    case IMM:
+    case ACC:
+        //TODO NO ADDRESS
+        break;
+    case IMP:
     default:
         break;
     }
@@ -373,17 +330,30 @@ uint16_t get_eff_addr(addr_mode *mode)
     return eff_addr;
 }
 
-// TODO
+/**
+ * return from interrupt
+ * 
+ * pop p register
+ * pop pcl
+ * pop pch
+ * pc++
+ */
 void brk()
 {
-
+    uint16_t ret_addr = REG_PC + 1; // ???
+    stack_push(BYTE_HI(ret_addr));
+    stack_push(BYTE_LO(ret_addr));
     SET_FLAG_B(1);
+    stack_push(REG_P);
+    // SET_FLAG_B(0); // is this flag cleared elsewhere?
+    uint8_t new_pcl = MEM(VEC_IRQ_LO);
+    uint8_t new_pch = MEM(VEC_IRQ_HI);
+    REG_PC = WORD(new_pcl, new_pch);
 }
 
 void ora(addr_mode *mode)
 {
     uint8_t val;
-
     switch (*mode)
     {
     case IND_X:
@@ -393,7 +363,7 @@ void ora(addr_mode *mode)
     case ZPG_X:
     case ABS_Y:
     case ABS_X:
-        val = cpu.mem[get_eff_addr(mode)];
+        val = MEM(get_eff_addr(mode));
         break;
     case IMM:
         val = read_byte();
@@ -401,41 +371,37 @@ void ora(addr_mode *mode)
     default:
         break;
     }
-
-    cpu.a |= val;
-
-    SET_FLAG_Z(!cpu.a);
-    SET_FLAG_N(cpu.a >> 7 & 1);
+    REG_A |= val;
+    SET_FLAG_Z(!REG_A);
+    SET_FLAG_N(REG_A >> 7 & 1);
 }
 
 void asl(addr_mode *mode)
 {
     uint8_t *val;
-
     switch (*mode)
     {
     case ZPG:
     case ABS:
     case ZPG_X:
     case ABS_X:
-        val = &cpu.mem[get_eff_addr(mode)];
+        val = &MEM(get_eff_addr(mode));
         break;
     case ACC:
-        val = &cpu.a;
+        val = &REG_A;
         break;
     default:
         break;
     }
-
     SET_FLAG_C(*val >> 7 & 1);
-    SET_FLAG_Z(!cpu.a);
-    SET_FLAG_N(cpu.a >> 7 & 1);
+    SET_FLAG_Z(!REG_A);
+    SET_FLAG_N(REG_A >> 7 & 1);
     *val <<= 1;
 }
 
 void php()
 {
-    stack_push(cpu.p.byte);
+    stack_push(REG_P);
 }
 
 void bpl(addr_mode *mode)
@@ -445,11 +411,11 @@ void bpl(addr_mode *mode)
     case REL:
         if (FLAG_N == 0)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc++;
+            REG_PC++;
         }
         break;
     default:
@@ -465,7 +431,6 @@ void clc()
 void and (addr_mode * mode)
 {
     uint8_t val;
-
     switch (*mode)
     {
     case IND_X:
@@ -475,7 +440,7 @@ void and (addr_mode * mode)
     case ABS:
     case ABS_X:
     case ABS_Y:
-        val = cpu.mem[get_eff_addr(mode)];
+        val = MEM(get_eff_addr(mode));
         break;
     case IMM:
         val = read_byte();
@@ -483,54 +448,48 @@ void and (addr_mode * mode)
     default:
         break;
     }
-
-    cpu.a &= val;
-    SET_FLAG_Z(cpu.a == 0);
-    SET_FLAG_N((cpu.a >> 7) & 1);
+    REG_A &= val;
+    SET_FLAG_Z(REG_A == 0);
+    SET_FLAG_N((REG_A >> 7) & 1);
 }
 
 void bit(addr_mode *mode)
 {
-    uint16_t eff_addr;
-    uint8_t eff_val;
+    uint8_t val;
     switch (*mode)
     {
     case ZPG:
     case ABS:
-        eff_addr = get_eff_addr(mode);
-        eff_val = cpu.mem[eff_addr];
-        SET_FLAG_Z(cpu.a & eff_val == 0);
-        SET_FLAG_N((eff_val >> 7) & 1);
-        SET_FLAG_V((eff_val >> 6) & 1);
+        val = MEM(get_eff_addr(mode));
         break;
     default:
         break;
     }
+    SET_FLAG_Z(REG_A & val == 0);
+    SET_FLAG_N((val >> 7) & 1);
+    SET_FLAG_V((val >> 6) & 1);
 }
 
 void rol(addr_mode *mode)
 {
     uint8_t *val;
-
     switch (*mode)
     {
     case ZPG:
     case ZPG_X:
     case ABS:
     case ABS_X:
-        val = &cpu.mem[get_eff_addr(mode)];
+        val = &MEM(get_eff_addr(mode));
         break;
     case ACC:
-        val = &cpu.a;
+        val = &REG_A;
         break;
     default:
         break;
     }
-
     uint8_t old_msb = (*val >> 7) & 1;
-    *val = (*val << 1);
-    *val |= cpu.p.flags.c;
-
+    *val <<= 1;
+    *val |= FLAG_C;
     SET_FLAG_C(old_msb);
     SET_FLAG_Z(*val == 0); // IS THIS CORRECT???
     SET_FLAG_N((*val >> 7) & 1);
@@ -538,7 +497,8 @@ void rol(addr_mode *mode)
 
 void plp()
 {
-    cpu.p.byte = stack_pop();
+    REG_P = stack_pop();
+    SET_FLAG_B(0);
 }
 
 void bmi(addr_mode *mode)
@@ -548,18 +508,18 @@ void bmi(addr_mode *mode)
     case REL:
         if (FLAG_N)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc++;
+            REG_PC++;
         }
         break;
-
     default:
         break;
     }
 }
+
 void sec()
 {
     SET_FLAG_C(1);
@@ -567,14 +527,14 @@ void sec()
 
 void rti()
 {
-    cpu.p.byte = stack_pop();
-    cpu.pc = stack_pop();
+    REG_P = stack_pop();
+    SET_FLAG_B(0);
+    REG_PC = WORD(stack_pop(), stack_pop()) + 1;
 }
 
 void eor(addr_mode *mode)
 {
     uint8_t val;
-
     switch (*mode)
     {
     case ZPG:
@@ -584,7 +544,7 @@ void eor(addr_mode *mode)
     case ABS_Y:
     case IND_X:
     case IND_Y:
-        val = cpu.mem[get_eff_addr(mode)];
+        val = MEM(get_eff_addr(mode));
         break;
     case IMM:
         val = read_byte();
@@ -592,31 +552,27 @@ void eor(addr_mode *mode)
     default:
         break;
     }
-
-    cpu.a ^= val;
-
-    SET_FLAG_Z(!cpu.a);
-    SET_FLAG_N(cpu.a >> 7 & 1);
+    REG_A ^= val;
+    SET_FLAG_Z(!REG_A);
+    SET_FLAG_N(REG_A >> 7 & 1);
 }
 
 void lsr(addr_mode *mode)
 {
     uint8_t *val;
-
     switch (*mode)
     {
     case ZPG:
     case ZPG_X:
     case ABS:
     case ABS_X:
-        val = &cpu.mem[get_eff_addr(mode)];
+        val = &MEM(get_eff_addr(mode));
         break;
     case ACC:
-        val = &cpu.a;
+        val = &REG_A;
     default:
         break;
     }
-
     SET_FLAG_C(*val & 1);
     *val >>= 1;
     SET_FLAG_N(0);
@@ -625,7 +581,7 @@ void lsr(addr_mode *mode)
 
 void pha()
 {
-    stack_push(cpu.a);
+    stack_push(REG_A);
 }
 
 void bvc(addr_mode *mode)
@@ -635,11 +591,11 @@ void bvc(addr_mode *mode)
     case REL:
         if (FLAG_V == 0)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc += 1;
+            REG_PC += 1;
         }
         break;
     default:
@@ -649,25 +605,31 @@ void bvc(addr_mode *mode)
 
 void jmp(addr_mode *mode)
 {
-    uint16_t addr;
     switch (*mode)
     {
     case ABS:
-        addr = get_eff_addr(mode);
-        break;
     case IND:
-        addr = get_eff_addr(mode);
+        REG_PC = get_eff_addr(mode);
         break;
     default:
         break;
     }
-    cpu.pc = addr;
 }
 
 void jsr(addr_mode *mode)
 {
-    stack_push(cpu.mem[cpu.pc + 2]);
-    cpu.pc = get_eff_addr(mode);
+    uint16_t ret_addr;
+    switch (*mode)
+    {
+    case ABS:
+        ret_addr = REG_PC + 1;
+        stack_push(BYTE_HI(ret_addr));
+        stack_push(BYTE_LO(ret_addr));
+        REG_PC = get_eff_addr(mode);
+        break;
+    default:
+        break;
+    }
 }
 
 void cli()
@@ -677,7 +639,7 @@ void cli()
 
 void rts()
 {
-    cpu.pc = WORD(stack_pop(), stack_pop());
+    REG_PC = WORD(stack_pop(), stack_pop()) + 1;
 }
 
 void adc(addr_mode *mode)
@@ -693,7 +655,7 @@ void adc(addr_mode *mode)
     case ABS_Y:
     case IND_X:
     case IND_Y:
-        val = cpu.mem[get_eff_addr(mode)];
+        val = MEM(get_eff_addr(mode));
         break;
     case IMM:
         val = read_byte();
@@ -701,16 +663,16 @@ void adc(addr_mode *mode)
         break;
     }
 
-    uint16_t sum = cpu.a + val + cpu.p.flags.c;
+    uint16_t sum = REG_A + val + cpu.p.flags.c;
     uint8_t carry = sum > 0xff;
-    uint8_t overflow = ~(cpu.a ^ val) & (cpu.a ^ sum) & 0x80;
+    uint8_t overflow = ~(REG_A ^ val) & (REG_A ^ sum) & 0x80;
 
-    cpu.a = sum & 0xff;
+    REG_A = sum & 0xff;
 
     SET_FLAG_C(carry);
     SET_FLAG_V(overflow);
-    SET_FLAG_Z(cpu.a == 0);
-    SET_FLAG_N((cpu.a >> 7) & 1);
+    SET_FLAG_Z(REG_A == 0);
+    SET_FLAG_N((REG_A >> 7) & 1);
 }
 
 void ror(addr_mode *mode)
@@ -723,10 +685,10 @@ void ror(addr_mode *mode)
     case ZPG_X:
     case ABS:
     case ABS_X:
-        val = &cpu.mem[get_eff_addr(mode)];
+        val = &MEM(get_eff_addr(mode));
         break;
     case ACC:
-        val = &cpu.a;
+        val = &REG_A;
         break;
     default:
         break;
@@ -745,9 +707,9 @@ void ror(addr_mode *mode)
 
 void pla()
 {
-    cpu.a = stack_pop();
-    SET_FLAG_Z(cpu.a == 0);
-    SET_FLAG_N((cpu.a >> 7) & 1);
+    REG_A = stack_pop();
+    SET_FLAG_Z(REG_A == 0);
+    SET_FLAG_N((REG_A >> 7) & 1);
 }
 
 void bvs(addr_mode *mode)
@@ -757,11 +719,11 @@ void bvs(addr_mode *mode)
     case REL:
         if (FLAG_V)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc++;
+            REG_PC++;
         }
         break;
     default:
@@ -785,7 +747,7 @@ void sta(addr_mode *mode)
     case ABS_Y:
     case IND_X:
     case IND_Y:
-        cpu.mem[get_eff_addr(mode)] = cpu.a;
+        MEM(get_eff_addr(mode)) = REG_A;
         break;
     default:
         break;
@@ -799,7 +761,7 @@ void sty(addr_mode *mode)
     case ZPG:
     case ZPG_X:
     case ABS:
-        cpu.mem[get_eff_addr(mode)] = cpu.y;
+        MEM(get_eff_addr(mode)) = REG_Y;
         break;
     default:
         break;
@@ -813,7 +775,7 @@ void stx(addr_mode *mode)
     case ZPG:
     case ZPG_Y:
     case ABS:
-        cpu.mem[get_eff_addr(mode)] = cpu.x;
+        MEM(get_eff_addr(mode)) = REG_X;
         break;
     default:
         break;
@@ -822,16 +784,16 @@ void stx(addr_mode *mode)
 
 void dey()
 {
-    cpu.y--;
-    SET_FLAG_Z(cpu.y == 0);
-    SET_FLAG_N((cpu.y >> 7) & 1);
+    REG_Y--;
+    SET_FLAG_Z(REG_Y == 0);
+    SET_FLAG_N((REG_Y >> 7) & 1);
 }
 
 void txa()
 {
-    cpu.a = cpu.x;
-    SET_FLAG_Z(cpu.a == 0);
-    SET_FLAG_N((cpu.a >> 7) & 1);
+    REG_A = REG_X;
+    SET_FLAG_Z(REG_A == 0);
+    SET_FLAG_N((REG_A >> 7) & 1);
 }
 
 void bcc(addr_mode *mode)
@@ -841,11 +803,11 @@ void bcc(addr_mode *mode)
     case REL:
         if (FLAG_C == 0)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc++;
+            REG_PC++;
         }
         break;
     default:
@@ -855,16 +817,16 @@ void bcc(addr_mode *mode)
 
 void tya()
 {
-    cpu.y = cpu.a;
-    SET_FLAG_Z(cpu.y == 0);
-    SET_FLAG_N((cpu.y >> 7) & 1);
+    REG_Y = REG_A;
+    SET_FLAG_Z(REG_Y == 0);
+    SET_FLAG_N((REG_Y >> 7) & 1);
 }
 
 void txs()
 {
-    cpu.x = cpu.sp;
-    SET_FLAG_Z(cpu.x == 0);
-    SET_FLAG_N((cpu.x >> 7) & 1);
+    REG_X = REG_SP;
+    SET_FLAG_Z(REG_X == 0);
+    SET_FLAG_N((REG_X >> 7) & 1);
 }
 
 void ldy(addr_mode *mode)
@@ -877,7 +839,7 @@ void ldy(addr_mode *mode)
     case ZPG_X:
     case ABS:
     case ABS_X:
-        val = cpu.mem[get_eff_addr(mode)];
+        val = MEM(get_eff_addr(mode));
         break;
     case IMM:
         val = read_byte();
@@ -886,10 +848,10 @@ void ldy(addr_mode *mode)
         break;
     }
 
-    cpu.y = val;
+    REG_Y = val;
 
-    SET_FLAG_Z(cpu.y == 0);
-    SET_FLAG_N((cpu.y >> 7) & 1);
+    SET_FLAG_Z(REG_Y == 0);
+    SET_FLAG_N((REG_Y >> 7) & 1);
 }
 
 void lda(addr_mode *mode)
@@ -905,7 +867,7 @@ void lda(addr_mode *mode)
     case ABS_Y:
     case IND_X:
     case IND_Y:
-        val = cpu.mem[get_eff_addr(mode)];
+        val = MEM(get_eff_addr(mode));
         break;
     case IMM:
         val = read_byte();
@@ -914,10 +876,10 @@ void lda(addr_mode *mode)
         break;
     }
 
-    cpu.a = val;
+    REG_A = val;
 
-    SET_FLAG_Z(cpu.a == 0);
-    SET_FLAG_N((cpu.a >> 7) & 1);
+    SET_FLAG_Z(REG_A == 0);
+    SET_FLAG_N((REG_A >> 7) & 1);
 }
 
 void ldx(addr_mode *mode)
@@ -930,7 +892,7 @@ void ldx(addr_mode *mode)
     case ZPG_Y:
     case ABS:
     case ABS_Y:
-        val = cpu.mem[get_eff_addr(mode)];
+        val = MEM(get_eff_addr(mode));
         break;
     case IMM:
         val = read_byte();
@@ -939,24 +901,24 @@ void ldx(addr_mode *mode)
         break;
     }
 
-    cpu.x = val;
+    REG_X = val;
 
-    SET_FLAG_Z(cpu.x == 0);
-    SET_FLAG_N((cpu.x >> 7) & 1);
+    SET_FLAG_Z(REG_X == 0);
+    SET_FLAG_N((REG_X >> 7) & 1);
 }
 
 void tay()
 {
-    cpu.y = cpu.a;
-    SET_FLAG_Z(cpu.y == 0);
-    SET_FLAG_N((cpu.y >> 7) & 1);
+    REG_Y = REG_A;
+    SET_FLAG_Z(REG_Y == 0);
+    SET_FLAG_N((REG_Y >> 7) & 1);
 }
 
 void tax()
 {
-    cpu.x = cpu.a;
-    SET_FLAG_Z(cpu.x == 0);
-    SET_FLAG_N((cpu.x >> 7) & 1);
+    REG_X = REG_A;
+    SET_FLAG_Z(REG_X == 0);
+    SET_FLAG_N((REG_X >> 7) & 1);
 }
 
 void bcs(addr_mode *mode)
@@ -966,11 +928,11 @@ void bcs(addr_mode *mode)
     case REL:
         if (FLAG_C == 1)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc++;
+            REG_PC++;
         }
         break;
     default:
@@ -985,9 +947,9 @@ void clv()
 
 void tsx()
 {
-    cpu.x = cpu.sp;
-    SET_FLAG_Z(cpu.x == 0);
-    SET_FLAG_N((cpu.x >> 7) & 1);
+    REG_X = REG_SP;
+    SET_FLAG_Z(REG_X == 0);
+    SET_FLAG_N((REG_X >> 7) & 1);
 }
 
 void cpy(addr_mode *mode)
@@ -1006,9 +968,9 @@ void cpy(addr_mode *mode)
         break;
     }
 
-    uint8_t diff = cpu.y - val;
-    SET_FLAG_C(cpu.y >= val);
-    SET_FLAG_Z(cpu.y == val);
+    uint8_t diff = REG_Y - val;
+    SET_FLAG_C(REG_Y >= val);
+    SET_FLAG_Z(REG_Y == val);
     SET_FLAG_N((diff >> 7) & 1);
 }
 
@@ -1033,9 +995,9 @@ void cmp(addr_mode *mode)
         break;
     }
 
-    uint8_t diff = cpu.a - val;
-    SET_FLAG_C(cpu.a >= val);
-    SET_FLAG_Z(cpu.a == val);
+    uint8_t diff = REG_A - val;
+    SET_FLAG_C(REG_A >= val);
+    SET_FLAG_Z(REG_A == val);
     SET_FLAG_N((diff >> 7) & 1);
 }
 
@@ -1062,16 +1024,16 @@ void dec(addr_mode *mode)
 
 void iny()
 {
-    cpu.y++;
-    SET_FLAG_Z(cpu.y == 0);
-    SET_FLAG_N((cpu.y >> 7) & 1);
+    REG_Y++;
+    SET_FLAG_Z(REG_Y == 0);
+    SET_FLAG_N((REG_Y >> 7) & 1);
 }
 
 void dex()
 {
-    cpu.x--;
-    SET_FLAG_Z(cpu.x == 0);
-    SET_FLAG_N((cpu.x >> 7) & 1);
+    REG_X--;
+    SET_FLAG_Z(REG_X == 0);
+    SET_FLAG_N((REG_X >> 7) & 1);
 }
 
 void bne(addr_mode *mode)
@@ -1081,11 +1043,11 @@ void bne(addr_mode *mode)
     case REL:
         if (!FLAG_Z)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc++;
+            REG_PC++;
         }
         break;
     default:
@@ -1114,9 +1076,9 @@ void cpx(addr_mode *mode)
         break;
     }
 
-    uint8_t diff = cpu.x - val;
-    SET_FLAG_C(cpu.x >= val);
-    SET_FLAG_Z(cpu.x == val);
+    uint8_t diff = REG_X - val;
+    SET_FLAG_C(REG_X >= val);
+    SET_FLAG_Z(REG_X == val);
     SET_FLAG_N((diff >> 7) & 1);
 }
 
@@ -1147,14 +1109,14 @@ void inc(addr_mode *mode)
 
 void inx()
 {
-    cpu.x++;
-    SET_FLAG_Z(cpu.x == 0);
-    SET_FLAG_N((cpu.x >> 7) & 1);
+    REG_X++;
+    SET_FLAG_Z(REG_X == 0);
+    SET_FLAG_N((REG_X >> 7) & 1);
 }
 
 void nop()
 {
-    cpu.pc++;
+    REG_PC++;
 }
 
 void beq(addr_mode *mode)
@@ -1164,11 +1126,11 @@ void beq(addr_mode *mode)
     case REL:
         if (FLAG_Z)
         {
-            cpu.pc += (int8_t)read_byte();
+            REG_PC += (int8_t)read_byte();
         }
         else
         {
-            cpu.pc++;
+            REG_PC++;
         }
         break;
     default:

@@ -2,6 +2,7 @@
 #define CPU_H
 
 #include <stdint.h>
+#include "cpu_macro.h"
 
 typedef union
 {
