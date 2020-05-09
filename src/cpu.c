@@ -9,30 +9,30 @@ void init_cpu()
 {
     memset(&cpu, 0, sizeof(cpu));
 
-    cpu.sp = 0xff;
+    REG_P = 0x34;
+    REG_SP = 0xfd;
+    REG_PC = ADDR_PRG_ROM_LOWER_BANK_START;
 }
 
 void load_rom(char *rom_path)
 {
+    int ret;
     FILE *rom_file = fopen(rom_path, "rb");
     if (rom_file == NULL)
     {
         printf("Invalid rom file path.\n");
         return;
     }
-    if (fseek(rom_file, SEEK_END, 0) != 0)
+    ret = fseek(rom_file, 0, SEEK_END) != 0;
+    if (ret != 0)
     {
         printf("fseek failed.\n");
         return;
     }
     size_t rom_size = ftell(rom_file);
     rewind(rom_file);
-    if (rom_size >= 0x4000) // max 16 KB
-    {
-        printf("Rom size too large: %ul B.\n", rom_size);
-        return;
-    }
-    size_t ret = fread(cpu.mem + ADDR_PRG_ROM_LOWER_BANK_START, rom_size, 1, rom_file);
+    ret = fread(cpu.mem + ADDR_PRG_ROM_LOWER_BANK_START, 1, rom_size, rom_file);
+    printf("%d / %lu\n", ret, rom_size);
     if (ret != rom_size)
     {
         printf("Reading rom failed.\n");
