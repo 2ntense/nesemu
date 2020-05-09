@@ -30,63 +30,78 @@ typedef struct instruction
 
 extern instruction_t instructions[0x100];
 
-void invoke(instruction_t *instruction);
+void execute_op(instruction_t *instruction);
 
-void brk();
-void ora(addr_mode *mode);
-void asl(addr_mode *mode);
-void php();
-void bpl(addr_mode *mode);
-void clc();
-void and(addr_mode *mode);
-void bit(addr_mode *mode);
-void rol(addr_mode *mode);
-void plp();
-void bmi(addr_mode *mode);
-void sec();
-void rti();
-void eor(addr_mode *mode);
-void lsr(addr_mode *mode);
-void pha();
-void bvc(addr_mode *mode);
-void jmp(addr_mode *mode);
-void jsr(addr_mode *mode);
-void cli();
-void rts();
-void adc(addr_mode *mode);
-void ror(addr_mode *mode);
-void pla();
-void bvs(addr_mode *mode);
-void sei();
-void sta(addr_mode *mode);
-void sty(addr_mode *mode);
-void stx(addr_mode *mode);
-void dey();
-void txa();
-void bcc(addr_mode *mode);
-void tya();
-void txs();
-void ldy(addr_mode *mode);
-void lda(addr_mode *mode);
-void ldx(addr_mode *mode);
-void tay();
-void tax();
-void bcs(addr_mode *mode);
-void clv();
-void tsx();
-void cpy(addr_mode *mode);
-void cmp(addr_mode *mode);
-void dec(addr_mode *mode);
-void iny();
-void dex();
-void bne(addr_mode *mode);
-void cld();
-void cpx(addr_mode *mode);
-void sbc(addr_mode *mode);
-void inc(addr_mode *mode);
+// Load and store group
+void lda(uint16_t eff_addr);
+void ldx(uint16_t eff_addr);
+void ldy(uint16_t eff_addr);
+void sta(uint16_t eff_addr);
+void stx(uint16_t eff_addr);
+void sty(uint16_t eff_addr);
+// Arithmetic group
+void adc(uint16_t eff_addr);
+void sbc(uint16_t eff_addr);
+// Increment and decrement group
+void inc(uint16_t eff_addr);
 void inx();
-void nop();
-void beq(addr_mode *mode);
+void iny();
+void dec(uint16_t eff_addr);
+void dex();
+void dey();
+// Register transfer group
+void tax();
+void tay();
+void txa();
+void tya();
+// Logical group
+void and(uint16_t eff_addr);
+void eor(uint16_t eff_addr);
+void ora(uint16_t eff_addr);
+// Compare and bit test group
+void cmp(uint16_t eff_addr);
+void cpx(uint16_t eff_addr);
+void cpy(uint16_t eff_addr);
+void bit(uint16_t eff_addr);
+// Shift and rotate group
+void asl(uint16_t eff_addr);
+void asl_a(void);
+void lsr(uint16_t eff_addr);
+void lsr_a(void);
+void rol(uint16_t eff_addr);
+void rol_a(void);
+void ror(uint16_t eff_addr);
+void ror_a(void);
+// Jump and branch group
+void jmp(uint16_t eff_addr);
+void bcc(uint16_t eff_addr);
+void bcs(uint16_t eff_addr);
+void beq(uint16_t eff_addr);
+void bmi(uint16_t eff_addr);
+void bne(uint16_t eff_addr);
+void bpl(uint16_t eff_addr);
+void bvc(uint16_t eff_addr);
+void bvs(uint16_t eff_addr);
+// Stack group
+void tsx();
+void txs();
+void pha();
+void php();
+void pla();
+void plp();
+// Status flag change group
+void clc();
+void cld();
+void cli();
+void clv();
+void sec();
 void sed();
+void sei();
+// Subroutine and interrupt group
+void jsr(uint16_t eff_addr);
+void rts();
+void brk();
+void rti();
+void nop();
 
 #endif

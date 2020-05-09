@@ -66,7 +66,7 @@ static instruction_t *decode_opcode(uint8_t opcode)
 
 static void execute_opcode(instruction_t *instruction)
 {
-    invoke(instruction);
+    execute_op(instruction);
 }
 
 void step()

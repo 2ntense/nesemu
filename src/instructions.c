@@ -13,7 +13,7 @@ instruction_t instructions[0x100] = {
     {NULL, 0, NULL},     // 0x07
     {"PHP", IMP, php},   // 0x08
     {"ORA", IMM, ora},   // 0x09
-    {"ASL", ACC, asl},   // 0x0a
+    {"ASL", ACC, asl_a}, // 0x0a
     {NULL, 0, NULL},     // 0x0b
     {NULL, 0, NULL},     // 0x0c
     {"ORA", ABS, ora},   // 0x0d
@@ -45,7 +45,7 @@ instruction_t instructions[0x100] = {
     {NULL, 0, NULL},     // 0x27
     {"PLP", IMP, plp},   // 0x28
     {"AND", IMM, and},   // 0x29
-    {"ROL", ACC, rol},   // 0x2a
+    {"ROL", ACC, rol_a}, // 0x2a
     {NULL, 0, NULL},     // 0x2b
     {"BIT", ABS, bit},   // 0x2c
     {"AND", ABS, and},   // 0x2d
@@ -77,7 +77,7 @@ instruction_t instructions[0x100] = {
     {NULL, 0, NULL},     // 0x47
     {"PHA", IMP, pha},   // 0x48
     {"EOR", IMM, eor},   // 0x49
-    {"LSR", ACC, lsr},   // 0x4a
+    {"LSR", ACC, lsr_a}, // 0x4a
     {NULL, 0, NULL},     // 0x4b
     {"JMP", ABS, jmp},   // 0x4c
     {"EOR", ABS, eor},   // 0x4d
@@ -109,7 +109,7 @@ instruction_t instructions[0x100] = {
     {NULL, 0, NULL},     // 0x67
     {"PLA", IMP, pla},   // 0x68
     {"ADC", IMM, adc},   // 0x69
-    {"ROR", ACC, ror},   // 0x6a
+    {"ROR", ACC, ror_a}, // 0x6a
     {NULL, 0, NULL},     // 0x6b
     {"JMP", IND, jmp},   // 0x6c
     {"ADC", ABS, adc},   // 0x6d
@@ -261,26 +261,14 @@ instruction_t instructions[0x100] = {
     {NULL, 0, NULL},     // 0xff
 };
 
-void invoke(instruction_t *instruction)
-{
-    if (instruction->mode != IMP)
-    {
-        ((void (*)(addr_mode))instruction->fun)(instruction->mode);
-    }
-    else
-    {
-        ((void (*)(void))instruction->fun)();
-    }
-}
-
-uint16_t get_eff_addr(addr_mode *mode)
+void execute_op(instruction_t *instruction)
 {
     uint16_t eff_addr;
     uint8_t zpg_addr;
     uint8_t adl;
     uint8_t adh;
 
-    switch (*mode)
+    switch (instruction->mode)
     {
     case IND:
         eff_addr = MEM(read_short());
@@ -319,264 +307,447 @@ uint16_t get_eff_addr(addr_mode *mode)
         eff_addr = (int8_t)read_byte();
         break;
     case IMM:
+        eff_addr = (uint8_t)read_byte();
+        break;
     case ACC:
-        //TODO NO ADDRESS
-        break;
     case IMP:
-    default:
+        eff_addr = 0;
         break;
+    default:
+        printf("Invalid addressing mode\n");
+        return;
     }
 
-    return eff_addr;
+    if (eff_addr)
+    {
+        ((void (*)(uint16_t))instruction->fun)(eff_addr);
+    }
+    else
+    {
+        ((void (*)(void))instruction->fun)();
+    }
 }
 
 /**
- * return from interrupt
- * 
- * pop p register
- * pop pcl
- * pop pch
- * pc++
+ * Load and store group
  */
-void brk()
+void lda(uint16_t eff_addr)
 {
-    uint16_t ret_addr = REG_PC + 1; // ???
-    stack_push(BYTE_HI(ret_addr));
-    stack_push(BYTE_LO(ret_addr));
-    SET_FLAG_B(1);
-    stack_push(REG_P);
-    // SET_FLAG_B(0); // is this flag cleared elsewhere?
-    uint8_t new_pcl = MEM(VEC_IRQ_LO);
-    uint8_t new_pch = MEM(VEC_IRQ_HI);
-    REG_PC = WORD(new_pcl, new_pch);
+    uint8_t val = MEM(eff_addr);
+    REG_A = val;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
 }
 
-void ora(addr_mode *mode)
+void ldy(uint16_t eff_addr)
 {
-    uint8_t val;
-    switch (*mode)
-    {
-    case IND_X:
-    case ZPG:
-    case ABS:
-    case IND_Y:
-    case ZPG_X:
-    case ABS_Y:
-    case ABS_X:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-        break;
-    default:
-        break;
-    }
-    REG_A |= val;
-    SET_FLAG_Z(!REG_A);
-    SET_FLAG_N(REG_A >> 7 & 1);
+    uint8_t val = MEM(eff_addr);
+    REG_Y = val;
+    FLAG_Z = (REG_Y == 0);
+    FLAG_N = ((REG_Y >> 7) & 1);
 }
 
-void asl(addr_mode *mode)
+void ldx(uint16_t eff_addr)
 {
-    uint8_t *val;
-    switch (*mode)
-    {
-    case ZPG:
-    case ABS:
-    case ZPG_X:
-    case ABS_X:
-        val = &MEM(get_eff_addr(mode));
-        break;
-    case ACC:
-        val = &REG_A;
-        break;
-    default:
-        break;
-    }
-    SET_FLAG_C(*val >> 7 & 1);
-    SET_FLAG_Z(!REG_A);
-    SET_FLAG_N(REG_A >> 7 & 1);
-    *val <<= 1;
+    uint8_t val = MEM(eff_addr);
+    REG_X = val;
+    FLAG_Z = (REG_X == 0);
+    FLAG_N = ((REG_X >> 7) & 1);
 }
 
-void php()
+void sta(uint16_t eff_addr)
 {
-    stack_push(REG_P);
+    MEM(eff_addr) = REG_A;
 }
 
-void bpl(addr_mode *mode)
+void sty(uint16_t eff_addr)
 {
-    switch (*mode)
-    {
-    case REL:
-        if (FLAG_N == 0)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC++;
-        }
-        break;
-    default:
-        break;
-    }
+    MEM(eff_addr) = REG_Y;
 }
 
-void clc()
+void stx(uint16_t eff_addr)
 {
-    SET_FLAG_C(0);
+    MEM(eff_addr) = REG_X;
 }
 
-void and (addr_mode * mode)
+/**
+ * Arithmetic group
+ */
+void adc(uint16_t eff_addr)
 {
-    uint8_t val;
-    switch (*mode)
-    {
-    case IND_X:
-    case IND_Y:
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-    case ABS_Y:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-        break;
-    default:
-        break;
-    }
+    uint8_t val = MEM(eff_addr);
+    uint16_t sum = REG_A + val + FLAG_C;
+    uint8_t carry = sum > 0xff;
+    uint8_t overflow = ~(REG_A ^ val) & (REG_A ^ sum) & 0x80;
+    REG_A = sum & 0xff;
+    FLAG_C = carry;
+    FLAG_V = overflow;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
+}
+
+void sbc(uint16_t eff_addr)
+{
+    uint8_t val = MEM(eff_addr) ^ 0x00ff;
+    val ^= 0x00FF;
+    uint16_t sum = REG_A + val + FLAG_C;
+    uint8_t carry = sum > 0xff;
+    uint8_t overflow = ~(REG_A ^ val) & (REG_A ^ sum) & 0x80;
+    REG_A = sum & 0xff;
+    FLAG_C = carry;
+    FLAG_V = overflow;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
+}
+
+/**
+ * Increment and decrement group 
+ */
+void inc(uint16_t eff_addr)
+{
+    uint8_t *val = &MEM(eff_addr);
+    *val++;
+    FLAG_Z = (*val == 0);
+    FLAG_N = ((*val >> 7) & 1);
+}
+
+void inx()
+{
+    REG_X++;
+    FLAG_Z = (REG_X == 0);
+    FLAG_N = ((REG_X >> 7) & 1);
+}
+
+void iny()
+{
+    REG_Y++;
+    FLAG_Z = (REG_Y == 0);
+    FLAG_N = ((REG_Y >> 7) & 1);
+}
+
+void dec(uint16_t eff_addr)
+{
+    uint8_t *val = &MEM(eff_addr);
+    *val--;
+    FLAG_Z = (*val == 0);
+    FLAG_N = ((*val >> 7) & 1);
+}
+
+void dex()
+{
+    REG_X--;
+    FLAG_Z = (REG_X == 0);
+    FLAG_N = ((REG_X >> 7) & 1);
+}
+
+void dey()
+{
+    REG_Y--;
+    FLAG_Z = (REG_Y == 0);
+    FLAG_N = ((REG_Y >> 7) & 1);
+}
+
+/**
+ * Register transfer group
+ */
+void tax()
+{
+    REG_X = REG_A;
+    FLAG_Z = (REG_X == 0);
+    FLAG_N = ((REG_X >> 7) & 1);
+}
+
+void tay()
+{
+    REG_Y = REG_A;
+    FLAG_Z = (REG_Y == 0);
+    FLAG_N = ((REG_Y >> 7) & 1);
+}
+
+void txa()
+{
+    REG_A = REG_X;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
+}
+
+void tya()
+{
+    REG_Y = REG_A;
+    FLAG_Z = (REG_Y == 0);
+    FLAG_N = ((REG_Y >> 7) & 1);
+}
+
+/**
+ * Logical group
+ */
+void and (uint16_t eff_addr)
+{
+    uint8_t val = MEM(eff_addr);
     REG_A &= val;
-    SET_FLAG_Z(REG_A == 0);
-    SET_FLAG_N((REG_A >> 7) & 1);
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
 }
 
-void bit(addr_mode *mode)
+void eor(uint16_t eff_addr)
 {
-    uint8_t val;
-    switch (*mode)
-    {
-    case ZPG:
-    case ABS:
-        val = MEM(get_eff_addr(mode));
-        break;
-    default:
-        break;
-    }
-    SET_FLAG_Z(REG_A & val == 0);
-    SET_FLAG_N((val >> 7) & 1);
-    SET_FLAG_V((val >> 6) & 1);
+    uint8_t val = MEM(eff_addr);
+    REG_A ^= val;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = (REG_A >> 7 & 1);
 }
 
-void rol(addr_mode *mode)
+void ora(uint16_t eff_addr)
 {
-    uint8_t *val;
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-        val = &MEM(get_eff_addr(mode));
-        break;
-    case ACC:
-        val = &REG_A;
-        break;
-    default:
-        break;
-    }
+    uint8_t val = MEM(eff_addr);
+    REG_A |= val;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = (REG_A >> 7 & 1);
+}
+
+/**
+ * Compare and bit test group
+ */
+void cmp(uint16_t eff_addr)
+{
+    uint8_t val = MEM(eff_addr);
+    uint8_t diff = REG_A - val;
+    FLAG_C = (REG_A >= val);
+    FLAG_Z = (REG_A == val);
+    FLAG_N = ((diff >> 7) & 1);
+}
+
+void cpx(uint16_t eff_addr)
+{
+    uint8_t val = MEM(eff_addr);
+    uint8_t diff = REG_X - val;
+    FLAG_C = (REG_X >= val);
+    FLAG_Z = (REG_X == val);
+    FLAG_N = ((diff >> 7) & 1);
+}
+
+void cpy(uint16_t eff_addr)
+{
+    uint8_t val = MEM(eff_addr);
+    uint8_t diff = REG_Y - val;
+    FLAG_C = (REG_Y >= val);
+    FLAG_Z = (REG_Y == val);
+    FLAG_N = ((diff >> 7) & 1);
+}
+
+void bit(uint16_t eff_addr)
+{
+    uint8_t val = MEM(eff_addr);
+    FLAG_Z = (REG_A & val == 0);
+    FLAG_N = ((val >> 7) & 1);
+    FLAG_V = ((val >> 6) & 1);
+}
+
+/**
+ * Shift and rotate group
+ */
+void asl(uint16_t eff_addr)
+{
+    uint8_t *val = &MEM(eff_addr);
+    FLAG_C = (*val >> 7 & 1);
+    *val <<= 1;
+    FLAG_N = (*val >> 7 & 1);
+    FLAG_Z = (*val == 0) ? 1 : FLAG_C;
+}
+
+void asl_a(void)
+{
+    FLAG_C = (REG_A >> 7 & 1);
+    REG_A <<= 1;
+    FLAG_N = (REG_A >> 7 & 1);
+    FLAG_Z = (REG_A == 0) ? 1 : FLAG_C;
+}
+
+void lsr(uint16_t eff_addr)
+{
+    uint8_t *val = &MEM(eff_addr);
+    FLAG_C = (*val & 1);
+    *val >>= 1;
+    FLAG_N = 0;
+    FLAG_Z = (*val == 0);
+}
+
+void lsr_a()
+{
+    FLAG_C = (REG_A & 1);
+    REG_A >>= 1;
+    FLAG_N = 0;
+    FLAG_Z = (REG_A == 0);
+}
+
+void rol(uint16_t eff_addr)
+{
+    uint8_t *val = &MEM(eff_addr);
     uint8_t old_msb = (*val >> 7) & 1;
     *val <<= 1;
     *val |= FLAG_C;
-    SET_FLAG_C(old_msb);
-    SET_FLAG_Z(*val == 0); // IS THIS CORRECT???
-    SET_FLAG_N((*val >> 7) & 1);
+    FLAG_C = old_msb;
+    FLAG_Z = (*val == 0);
+    FLAG_N = ((*val >> 7) & 1);
 }
 
-void plp()
+void rol_a()
 {
-    REG_P = stack_pop();
-    SET_FLAG_B(0);
+    uint8_t old_msb = (REG_A >> 7) & 1;
+    REG_A <<= 1;
+    REG_A |= FLAG_C;
+    FLAG_C = old_msb;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
 }
 
-void bmi(addr_mode *mode)
+void ror(uint16_t eff_addr)
 {
-    switch (*mode)
-    {
-    case REL:
-        if (FLAG_N)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC++;
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-void sec()
-{
-    SET_FLAG_C(1);
-}
-
-void rti()
-{
-    REG_P = stack_pop();
-    SET_FLAG_B(0);
-    REG_PC = WORD(stack_pop(), stack_pop()) + 1;
-}
-
-void eor(addr_mode *mode)
-{
-    uint8_t val;
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-    case ABS_Y:
-    case IND_X:
-    case IND_Y:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-        break;
-    default:
-        break;
-    }
-    REG_A ^= val;
-    SET_FLAG_Z(!REG_A);
-    SET_FLAG_N(REG_A >> 7 & 1);
-}
-
-void lsr(addr_mode *mode)
-{
-    uint8_t *val;
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-        val = &MEM(get_eff_addr(mode));
-        break;
-    case ACC:
-        val = &REG_A;
-    default:
-        break;
-    }
-    SET_FLAG_C(*val & 1);
+    uint8_t *val = &MEM(eff_addr);
+    uint8_t old_lsb = *val & 1;
     *val >>= 1;
-    SET_FLAG_N(0);
-    SET_FLAG_Z(*val == 0);
+    if (FLAG_C)
+    {
+        *val |= 0x80;
+    }
+    FLAG_C = old_lsb;
+    FLAG_Z = (*val == 0);
+    FLAG_N = ((*val >> 7) & 1);
+}
+
+void ror_a()
+{
+    uint8_t old_lsb = REG_A & 1;
+    REG_A >>= 1;
+    if (FLAG_C)
+    {
+        REG_A |= 0x80;
+    }
+    FLAG_C = old_lsb;
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
+}
+
+/**
+ * Jump and branch group
+ */
+void jmp(uint16_t eff_addr)
+{
+    REG_PC = eff_addr;
+}
+
+void bcc(uint16_t eff_addr)
+{
+    if (FLAG_C == 0)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC++;
+    }
+}
+
+void bcs(uint16_t eff_addr)
+{
+    if (FLAG_C == 1)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC++;
+    }
+}
+
+void beq(uint16_t eff_addr)
+{
+    if (FLAG_Z)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC++;
+    }
+}
+
+void bmi(uint16_t eff_addr)
+{
+    if (FLAG_N)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC++;
+    }
+}
+
+void bne(uint16_t eff_addr)
+{
+    if (FLAG_Z == 0)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC++;
+    }
+}
+
+void bpl(uint16_t eff_addr)
+{
+    if (FLAG_N == 0)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC++;
+    }
+}
+
+void bvc(uint16_t eff_addr)
+{
+    if (FLAG_V == 0)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC += 1;
+    }
+}
+
+void bvs(uint16_t eff_addr)
+{
+    if (FLAG_V)
+    {
+        REG_PC += (int8_t)eff_addr;
+    }
+    else
+    {
+        REG_PC++;
+    }
+}
+
+/**
+ * Stack group
+ */
+
+void tsx()
+{
+    REG_X = REG_SP;
+    FLAG_Z = (REG_X == 0);
+    FLAG_N = ((REG_X >> 7) & 1);
+}
+
+void txs()
+{
+    REG_X = REG_SP;
+    FLAG_Z = (REG_X == 0);
+    FLAG_N = ((REG_X >> 7) & 1);
 }
 
 void pha()
@@ -584,57 +755,71 @@ void pha()
     stack_push(REG_A);
 }
 
-void bvc(addr_mode *mode)
+void php()
 {
-    switch (*mode)
-    {
-    case REL:
-        if (FLAG_V == 0)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC += 1;
-        }
-        break;
-    default:
-        break;
-    }
+    stack_push(REG_P);
 }
 
-void jmp(addr_mode *mode)
+void pla()
 {
-    switch (*mode)
-    {
-    case ABS:
-    case IND:
-        REG_PC = get_eff_addr(mode);
-        break;
-    default:
-        break;
-    }
+    REG_A = stack_pop();
+    FLAG_Z = (REG_A == 0);
+    FLAG_N = ((REG_A >> 7) & 1);
 }
 
-void jsr(addr_mode *mode)
+void plp()
 {
-    uint16_t ret_addr;
-    switch (*mode)
-    {
-    case ABS:
-        ret_addr = REG_PC + 1;
-        stack_push(BYTE_HI(ret_addr));
-        stack_push(BYTE_LO(ret_addr));
-        REG_PC = get_eff_addr(mode);
-        break;
-    default:
-        break;
-    }
+    REG_P = stack_pop();
+    FLAG_B = 0;
+}
+
+/**
+ * Status flag change group
+ */
+void clc()
+{
+    FLAG_C = 0;
+}
+
+void cld()
+{
+    FLAG_D = 0;
 }
 
 void cli()
 {
-    SET_FLAG_I(0);
+    FLAG_I = 0;
+}
+
+void clv()
+{
+    FLAG_V = 0;
+}
+
+void sec()
+{
+    FLAG_C = 1;
+}
+
+void sed()
+{
+    FLAG_D = 1;
+}
+
+void sei()
+{
+    FLAG_I = 1;
+}
+
+/**
+ * Subroutine and interrupt group
+ */
+void jsr(uint16_t eff_addr)
+{
+    uint16_t ret_addr = REG_PC + 1;
+    stack_push(BYTE_HI(ret_addr));
+    stack_push(BYTE_LO(ret_addr));
+    REG_PC = eff_addr;
 }
 
 void rts()
@@ -642,503 +827,26 @@ void rts()
     REG_PC = WORD(stack_pop(), stack_pop()) + 1;
 }
 
-void adc(addr_mode *mode)
+void brk()
 {
-    uint8_t val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-    case ABS_Y:
-    case IND_X:
-    case IND_Y:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-    default:
-        break;
-    }
-
-    uint16_t sum = REG_A + val + cpu.p.flags.c;
-    uint8_t carry = sum > 0xff;
-    uint8_t overflow = ~(REG_A ^ val) & (REG_A ^ sum) & 0x80;
-
-    REG_A = sum & 0xff;
-
-    SET_FLAG_C(carry);
-    SET_FLAG_V(overflow);
-    SET_FLAG_Z(REG_A == 0);
-    SET_FLAG_N((REG_A >> 7) & 1);
+    uint16_t ret_addr = REG_PC + 1; // ???
+    stack_push(BYTE_HI(ret_addr));
+    stack_push(BYTE_LO(ret_addr));
+    FLAG_B = 1;
+    stack_push(REG_P);
+    uint8_t new_pcl = MEM(VEC_IRQ_LO);
+    uint8_t new_pch = MEM(VEC_IRQ_HI);
+    REG_PC = WORD(new_pcl, new_pch);
 }
 
-void ror(addr_mode *mode)
+void rti()
 {
-    uint8_t *val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-        val = &MEM(get_eff_addr(mode));
-        break;
-    case ACC:
-        val = &REG_A;
-        break;
-    default:
-        break;
-    }
-
-    uint8_t old_lsb = *val & 1;
-    *val = (*val >> 1);
-    if (FLAG_C)
-    {
-        *val |= 0x80;
-    }
-    SET_FLAG_C(old_lsb);
-    SET_FLAG_Z(*val == 0);
-    SET_FLAG_N((*val >> 7) & 1);
-}
-
-void pla()
-{
-    REG_A = stack_pop();
-    SET_FLAG_Z(REG_A == 0);
-    SET_FLAG_N((REG_A >> 7) & 1);
-}
-
-void bvs(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case REL:
-        if (FLAG_V)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC++;
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-void sei()
-{
-    SET_FLAG_I(1);
-}
-
-void sta(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-    case ABS_Y:
-    case IND_X:
-    case IND_Y:
-        MEM(get_eff_addr(mode)) = REG_A;
-        break;
-    default:
-        break;
-    }
-}
-
-void sty(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-        MEM(get_eff_addr(mode)) = REG_Y;
-        break;
-    default:
-        break;
-    }
-}
-
-void stx(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_Y:
-    case ABS:
-        MEM(get_eff_addr(mode)) = REG_X;
-        break;
-    default:
-        break;
-    }
-}
-
-void dey()
-{
-    REG_Y--;
-    SET_FLAG_Z(REG_Y == 0);
-    SET_FLAG_N((REG_Y >> 7) & 1);
-}
-
-void txa()
-{
-    REG_A = REG_X;
-    SET_FLAG_Z(REG_A == 0);
-    SET_FLAG_N((REG_A >> 7) & 1);
-}
-
-void bcc(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case REL:
-        if (FLAG_C == 0)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC++;
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-void tya()
-{
-    REG_Y = REG_A;
-    SET_FLAG_Z(REG_Y == 0);
-    SET_FLAG_N((REG_Y >> 7) & 1);
-}
-
-void txs()
-{
-    REG_X = REG_SP;
-    SET_FLAG_Z(REG_X == 0);
-    SET_FLAG_N((REG_X >> 7) & 1);
-}
-
-void ldy(addr_mode *mode)
-{
-    uint8_t val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-        break;
-    default:
-        break;
-    }
-
-    REG_Y = val;
-
-    SET_FLAG_Z(REG_Y == 0);
-    SET_FLAG_N((REG_Y >> 7) & 1);
-}
-
-void lda(addr_mode *mode)
-{
-    uint8_t val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-    case ABS_Y:
-    case IND_X:
-    case IND_Y:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-        break;
-    default:
-        break;
-    }
-
-    REG_A = val;
-
-    SET_FLAG_Z(REG_A == 0);
-    SET_FLAG_N((REG_A >> 7) & 1);
-}
-
-void ldx(addr_mode *mode)
-{
-    uint8_t val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_Y:
-    case ABS:
-    case ABS_Y:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-        break;
-    default:
-        break;
-    }
-
-    REG_X = val;
-
-    SET_FLAG_Z(REG_X == 0);
-    SET_FLAG_N((REG_X >> 7) & 1);
-}
-
-void tay()
-{
-    REG_Y = REG_A;
-    SET_FLAG_Z(REG_Y == 0);
-    SET_FLAG_N((REG_Y >> 7) & 1);
-}
-
-void tax()
-{
-    REG_X = REG_A;
-    SET_FLAG_Z(REG_X == 0);
-    SET_FLAG_N((REG_X >> 7) & 1);
-}
-
-void bcs(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case REL:
-        if (FLAG_C == 1)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC++;
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-void clv()
-{
-    SET_FLAG_V(0);
-}
-
-void tsx()
-{
-    REG_X = REG_SP;
-    SET_FLAG_Z(REG_X == 0);
-    SET_FLAG_N((REG_X >> 7) & 1);
-}
-
-void cpy(addr_mode *mode)
-{
-    uint8_t val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ABS:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-    default:
-        break;
-    }
-
-    uint8_t diff = REG_Y - val;
-    SET_FLAG_C(REG_Y >= val);
-    SET_FLAG_Z(REG_Y == val);
-    SET_FLAG_N((diff >> 7) & 1);
-}
-
-void cmp(addr_mode *mode)
-{
-    uint8_t val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-    case ABS_Y:
-    case IND_X:
-    case IND_Y:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-    default:
-        break;
-    }
-
-    uint8_t diff = REG_A - val;
-    SET_FLAG_C(REG_A >= val);
-    SET_FLAG_Z(REG_A == val);
-    SET_FLAG_N((diff >> 7) & 1);
-}
-
-void dec(addr_mode *mode)
-{
-    uint8_t *val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-        val = &MEM(get_eff_addr(mode));
-        break;
-    default:
-        break;
-    }
-
-    *val--;
-    SET_FLAG_Z(*val == 0);
-    SET_FLAG_N((*val >> 7) & 1);
-}
-
-void iny()
-{
-    REG_Y++;
-    SET_FLAG_Z(REG_Y == 0);
-    SET_FLAG_N((REG_Y >> 7) & 1);
-}
-
-void dex()
-{
-    REG_X--;
-    SET_FLAG_Z(REG_X == 0);
-    SET_FLAG_N((REG_X >> 7) & 1);
-}
-
-void bne(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case REL:
-        if (!FLAG_Z)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC++;
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-void cld()
-{
-    SET_FLAG_D(0);
-}
-
-void cpx(addr_mode *mode)
-{
-    uint8_t val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ABS:
-        val = MEM(get_eff_addr(mode));
-        break;
-    case IMM:
-        val = read_byte();
-    default:
-        break;
-    }
-
-    uint8_t diff = REG_X - val;
-    SET_FLAG_C(REG_X >= val);
-    SET_FLAG_Z(REG_X == val);
-    SET_FLAG_N((diff >> 7) & 1);
-}
-
-void sbc(addr_mode *mode)
-{
-}
-
-void inc(addr_mode *mode)
-{
-    uint8_t *val;
-
-    switch (*mode)
-    {
-    case ZPG:
-    case ZPG_X:
-    case ABS:
-    case ABS_X:
-        val = &MEM(get_eff_addr(mode));
-        break;
-    default:
-        break;
-    }
-
-    *val++;
-    SET_FLAG_Z(*val == 0);
-    SET_FLAG_N((*val >> 7) & 1);
-}
-
-void inx()
-{
-    REG_X++;
-    SET_FLAG_Z(REG_X == 0);
-    SET_FLAG_N((REG_X >> 7) & 1);
+    REG_P = stack_pop();
+    FLAG_B = 0;
+    REG_PC = WORD(stack_pop(), stack_pop()) + 1;
 }
 
 void nop()
 {
     REG_PC++;
-}
-
-void beq(addr_mode *mode)
-{
-    switch (*mode)
-    {
-    case REL:
-        if (FLAG_Z)
-        {
-            REG_PC += (int8_t)read_byte();
-        }
-        else
-        {
-            REG_PC++;
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-void sed()
-{
-    SET_FLAG_D(1);
 }
