@@ -35,6 +35,7 @@ typedef struct cpu {
 extern cpu_t cpu;
 
 extern void init_cpu();
+void load_rom(char *rom_path);
 void stack_push(uint8_t val);
 uint8_t stack_pop();
 uint8_t read_byte();

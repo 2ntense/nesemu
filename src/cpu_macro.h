@@ -1,6 +1,11 @@
 #ifndef CPU_MACRO_H
 #define CPU_MACRO_H
 
+#define ADDR_PRG_ROM_LOWER_BANK_START 0x8000
+#define ADDR_PRG_ROM_LOWER_BANK_END 0xC000 - 1
+#define ADDR_PRG_ROM_UPPER_BANK_START 0xC000
+#define ADDR_PRG_ROM_UPPER_BANK_END 0x10000 - 1
+
 #define VEC_NMI_LO 0xfffa
 #define VEC_NMI_HI 0xfffb
 #define VEC_RST_LO 0xfffc

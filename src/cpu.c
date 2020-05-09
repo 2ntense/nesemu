@@ -1,6 +1,7 @@
 #include "cpu.h"
 #include <string.h>
 #include "instructions.h"
+#include <stdio.h>
 
 cpu_t cpu;
 
@@ -9,6 +10,33 @@ void init_cpu()
     memset(&cpu, 0, sizeof(cpu));
 
     cpu.sp = 0xff;
+}
+
+void load_rom(char *rom_path)
+{
+    FILE *rom_file = fopen(rom_path, "rb");
+    if (rom_file == NULL)
+    {
+        printf("Invalid rom file path.\n");
+        return;
+    }
+    if (fseek(rom_file, SEEK_END, 0) != 0)
+    {
+        printf("fseek failed.\n");
+        return;
+    }
+    size_t rom_size = ftell(rom_file);
+    rewind(rom_file);
+    if (rom_size >= 0x4000) // max 16 KB
+    {
+        printf("Rom size too large: %ul B.\n", rom_size);
+        return;
+    }
+    size_t ret = fread(cpu.mem + ADDR_PRG_ROM_LOWER_BANK_START, rom_size, 1, rom_file);
+    if (ret != rom_size)
+    {
+        printf("Reading rom failed.\n");
+    }
 }
 
 void stack_push(uint8_t val)
