@@ -35,6 +35,7 @@ extern cpu_t cpu;
 
 extern void init_cpu();
 void stack_push(uint8_t val);
+uint8_t stack_pop();
 uint8_t read_byte();
 uint16_t read_short();
 extern void step();
