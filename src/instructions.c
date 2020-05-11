@@ -271,43 +271,43 @@ void execute_op(instruction_t *instruction)
     switch (instruction->mode)
     {
     case IND:
-        eff_addr = MEM(read_short());
+        eff_addr = mem_read(read_pc_word());
         break;
     case IND_X:
-        zpg_addr = read_byte();
-        adl = MEM((zpg_addr + REG_X) % 0xff);
-        adh = MEM((zpg_addr + REG_X + 1) % 0xff);
+        zpg_addr = read_pc_byte();
+        adl = mem_read((zpg_addr + REG_X) % 0xff);
+        adh = mem_read((zpg_addr + REG_X + 1) % 0xff);
         eff_addr = WORD(adl, adh);
         break;
     case IND_Y:
-        zpg_addr = read_byte();
-        adl = MEM(zpg_addr);
-        adh = MEM(zpg_addr + 1);
+        zpg_addr = read_pc_byte();
+        adl = mem_read(zpg_addr);
+        adh = mem_read(zpg_addr + 1);
         eff_addr = WORD(adl, adh) + REG_Y;
         break;
     case ZPG:
-        eff_addr = read_byte();
+        eff_addr = read_pc_byte();
         break;
     case ZPG_X:
-        eff_addr = read_byte() + REG_X;
+        eff_addr = read_pc_byte() + REG_X;
         break;
     case ZPG_Y:
-        eff_addr = read_byte() + REG_Y;
+        eff_addr = read_pc_byte() + REG_Y;
         break;
     case ABS:
-        eff_addr = read_short();
+        eff_addr = read_pc_word();
         break;
     case ABS_X:
-        eff_addr = read_short() + REG_X;
+        eff_addr = read_pc_word() + REG_X;
         break;
     case ABS_Y:
-        eff_addr = read_short() + REG_Y;
+        eff_addr = read_pc_word() + REG_Y;
         break;
     case REL:
-        eff_addr = (int8_t)read_byte();
+        eff_addr = (int8_t)read_pc_byte();
         break;
     case IMM:
-        eff_addr = (uint8_t)read_byte();
+        eff_addr = (uint8_t)read_pc_byte();
         break;
     case ACC:
     case IMP:
@@ -333,7 +333,7 @@ void execute_op(instruction_t *instruction)
  */
 void lda(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     REG_A = val;
     FLAG_Z = (REG_A == 0);
     FLAG_N = ((REG_A >> 7) & 1);
@@ -341,7 +341,7 @@ void lda(uint16_t eff_addr)
 
 void ldy(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     REG_Y = val;
     FLAG_Z = (REG_Y == 0);
     FLAG_N = ((REG_Y >> 7) & 1);
@@ -349,7 +349,7 @@ void ldy(uint16_t eff_addr)
 
 void ldx(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     REG_X = val;
     FLAG_Z = (REG_X == 0);
     FLAG_N = ((REG_X >> 7) & 1);
@@ -357,17 +357,17 @@ void ldx(uint16_t eff_addr)
 
 void sta(uint16_t eff_addr)
 {
-    MEM(eff_addr) = REG_A;
+    mem_write(eff_addr, REG_A);
 }
 
 void sty(uint16_t eff_addr)
 {
-    MEM(eff_addr) = REG_Y;
+    mem_write(eff_addr, REG_Y);
 }
 
 void stx(uint16_t eff_addr)
 {
-    MEM(eff_addr) = REG_X;
+    mem_write(eff_addr, REG_X);
 }
 
 /**
@@ -375,7 +375,7 @@ void stx(uint16_t eff_addr)
  */
 void adc(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     uint16_t sum = REG_A + val + FLAG_C;
     uint8_t carry = sum > 0xff;
     uint8_t overflow = ~(REG_A ^ val) & (REG_A ^ sum) & 0x80;
@@ -388,7 +388,7 @@ void adc(uint16_t eff_addr)
 
 void sbc(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr) ^ 0x00ff;
+    uint8_t val = mem_read(eff_addr) ^ 0x00ff;
     val ^= 0x00FF;
     uint16_t sum = REG_A + val + FLAG_C;
     uint8_t carry = sum > 0xff;
@@ -405,10 +405,11 @@ void sbc(uint16_t eff_addr)
  */
 void inc(uint16_t eff_addr)
 {
-    uint8_t *val = &MEM(eff_addr);
-    *val++;
-    FLAG_Z = (*val == 0);
-    FLAG_N = ((*val >> 7) & 1);
+    uint8_t val = mem_read(eff_addr);
+    val++;
+    FLAG_Z = (val == 0);
+    FLAG_N = ((val >> 7) & 1);
+    mem_write(eff_addr, val);
 }
 
 void inx()
@@ -427,10 +428,12 @@ void iny()
 
 void dec(uint16_t eff_addr)
 {
-    uint8_t *val = &MEM(eff_addr);
-    *val--;
-    FLAG_Z = (*val == 0);
-    FLAG_N = ((*val >> 7) & 1);
+    // uint8_t *val = &mem_read(eff_addr);
+    uint8_t val = mem_read(eff_addr);
+    val--;
+    FLAG_Z = (val == 0);
+    FLAG_N = ((val >> 7) & 1);
+    mem_write(eff_addr, val);
 }
 
 void dex()
@@ -483,7 +486,7 @@ void tya()
  */
 void and (uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     REG_A &= val;
     FLAG_Z = (REG_A == 0);
     FLAG_N = ((REG_A >> 7) & 1);
@@ -491,7 +494,7 @@ void and (uint16_t eff_addr)
 
 void eor(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     REG_A ^= val;
     FLAG_Z = (REG_A == 0);
     FLAG_N = (REG_A >> 7 & 1);
@@ -499,7 +502,7 @@ void eor(uint16_t eff_addr)
 
 void ora(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     REG_A |= val;
     FLAG_Z = (REG_A == 0);
     FLAG_N = (REG_A >> 7 & 1);
@@ -510,7 +513,7 @@ void ora(uint16_t eff_addr)
  */
 void cmp(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     uint8_t diff = REG_A - val;
     FLAG_C = (REG_A >= val);
     FLAG_Z = (REG_A == val);
@@ -519,7 +522,7 @@ void cmp(uint16_t eff_addr)
 
 void cpx(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     uint8_t diff = REG_X - val;
     FLAG_C = (REG_X >= val);
     FLAG_Z = (REG_X == val);
@@ -528,7 +531,7 @@ void cpx(uint16_t eff_addr)
 
 void cpy(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     uint8_t diff = REG_Y - val;
     FLAG_C = (REG_Y >= val);
     FLAG_Z = (REG_Y == val);
@@ -537,7 +540,7 @@ void cpy(uint16_t eff_addr)
 
 void bit(uint16_t eff_addr)
 {
-    uint8_t val = MEM(eff_addr);
+    uint8_t val = mem_read(eff_addr);
     FLAG_Z = (REG_A & val == 0);
     FLAG_N = ((val >> 7) & 1);
     FLAG_V = ((val >> 6) & 1);
@@ -548,11 +551,12 @@ void bit(uint16_t eff_addr)
  */
 void asl(uint16_t eff_addr)
 {
-    uint8_t *val = &MEM(eff_addr);
-    FLAG_C = (*val >> 7 & 1);
-    *val <<= 1;
-    FLAG_N = (*val >> 7 & 1);
-    FLAG_Z = (*val == 0) ? 1 : FLAG_C;
+    uint8_t val = mem_read(eff_addr);
+    FLAG_C = (val >> 7 & 1);
+    val <<= 1;
+    FLAG_N = (val >> 7 & 1);
+    FLAG_Z = (val == 0) ? 1 : FLAG_C;
+    mem_write(eff_addr, val);
 }
 
 void asl_a(void)
@@ -565,11 +569,12 @@ void asl_a(void)
 
 void lsr(uint16_t eff_addr)
 {
-    uint8_t *val = &MEM(eff_addr);
-    FLAG_C = (*val & 1);
-    *val >>= 1;
+    uint8_t val = mem_read(eff_addr);
+    FLAG_C = (val & 1);
+    val >>= 1;
     FLAG_N = 0;
-    FLAG_Z = (*val == 0);
+    FLAG_Z = (val == 0);
+    mem_write(eff_addr, val);
 }
 
 void lsr_a()
@@ -582,13 +587,14 @@ void lsr_a()
 
 void rol(uint16_t eff_addr)
 {
-    uint8_t *val = &MEM(eff_addr);
-    uint8_t old_msb = (*val >> 7) & 1;
-    *val <<= 1;
-    *val |= FLAG_C;
+    uint8_t val = mem_read(eff_addr);
+    uint8_t old_msb = (val >> 7) & 1;
+    val <<= 1;
+    val |= FLAG_C;
     FLAG_C = old_msb;
-    FLAG_Z = (*val == 0);
-    FLAG_N = ((*val >> 7) & 1);
+    FLAG_Z = (val == 0);
+    FLAG_N = ((val >> 7) & 1);
+    mem_write(eff_addr, val);
 }
 
 void rol_a()
@@ -603,16 +609,17 @@ void rol_a()
 
 void ror(uint16_t eff_addr)
 {
-    uint8_t *val = &MEM(eff_addr);
-    uint8_t old_lsb = *val & 1;
-    *val >>= 1;
+    uint8_t val = mem_read(eff_addr);
+    uint8_t old_lsb = val & 1;
+    val >>= 1;
     if (FLAG_C)
     {
-        *val |= 0x80;
+        val |= 0x80;
     }
     FLAG_C = old_lsb;
-    FLAG_Z = (*val == 0);
-    FLAG_N = ((*val >> 7) & 1);
+    FLAG_Z = (val == 0);
+    FLAG_N = ((val >> 7) & 1);
+    mem_write(eff_addr, val);
 }
 
 void ror_a()
@@ -834,8 +841,8 @@ void brk()
     stack_push(BYTE_LO(ret_addr));
     FLAG_B = 1;
     stack_push(REG_P);
-    uint8_t new_pcl = MEM(VEC_IRQ_LO);
-    uint8_t new_pch = MEM(VEC_IRQ_HI);
+    uint8_t new_pcl = mem_read(VEC_IRQ_LO);
+    uint8_t new_pch = mem_read(VEC_IRQ_HI);
     REG_PC = WORD(new_pcl, new_pch);
 }
 

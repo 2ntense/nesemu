@@ -38,8 +38,12 @@ extern void init_cpu();
 void load_rom(char *rom_path);
 void stack_push(uint8_t val);
 uint8_t stack_pop();
-uint8_t read_byte();
-uint16_t read_short();
+uint8_t read_pc_byte();
+uint16_t read_pc_word();
 extern void step();
+void init_pc();
+uint8_t mem_read(uint16_t addr);
+void mem_write(uint16_t addr, uint8_t val);
 
+void load_prg_rom();
 #endif
